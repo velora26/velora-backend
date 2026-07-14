@@ -16,9 +16,18 @@ const app = express();
 // Connect Database
 connectDB();
 
-// Ensure uploads folder exists
+// // Ensure uploads folder exists
+// const uploadsDir = path.join(__dirname, '../uploads');
+// if (!fs.existsSync(uploadsDir)) {
+//   fs.mkdirSync(uploadsDir, { recursive: true });
+// }
+
+// Ensure uploads folder exists (skipped on Vercel -- its filesystem is
+// read-only outside /tmp, so this write would throw and crash the function
+// on every cold start; local disk storage isn't used in production anyway
+// now that uploads go through Cloudinary, see services/upload.service.ts)
 const uploadsDir = path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadsDir)) {
+if (!process.env.VERCEL && !fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
