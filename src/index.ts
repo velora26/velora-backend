@@ -40,17 +40,43 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
 
+// // CORS Configuration
+// const allowedOrigins = [
+//   env.CLIENT_URL,
+//   'http://localhost:5173',
+//   'http://127.0.0.1:5173',
+//   'https://velora-frontend.vercel.app',
+// ];
+
+// app.use(cors({
+//   origin: (origin, callback) => {
+//     if (!origin || allowedOrigins.includes(origin)) {
+//       callback(null, true);
+//     } else {
+//       callback(new Error('Not allowed by CORS'));
+//     }
+//   },
+//   credentials: true,
+//   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+// }));
+
 // CORS Configuration
 const allowedOrigins = [
   env.CLIENT_URL,
   'http://localhost:5173',
   'http://127.0.0.1:5173',
-  'https://velora-frontend.vercel.app',
 ];
+
+// Vercel gives every deployment a unique subdomain (e.g.
+// velora-frontend-<random>-juhii07s-projects.vercel.app), which changes
+// on every deploy -- so an exact string match in allowedOrigins would
+// break again on the next deploy. This regex allows any deployment
+// belonging to this Vercel account/project instead of one fixed URL.
+const vercelProjectPattern = /^https:\/\/velora-frontend(-[a-z0-9]+)?-juhii07s-projects\.vercel\.app$/;
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (!origin || allowedOrigins.includes(origin) || vercelProjectPattern.test(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
