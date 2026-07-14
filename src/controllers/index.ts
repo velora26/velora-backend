@@ -893,11 +893,72 @@ export class NotificationController {
 
 export const notificationController = new NotificationController();
 
+// // ==========================================
+// // 14. UPLOAD CONTROLLER
+// // ==========================================
+// import fs from 'fs';
+// import path from 'path';
+
+// export class UploadController {
+//   async uploadImage(req: AuthRequest, res: Response) {
+//     try {
+//       const { filename, base64Data } = req.body;
+//       if (!filename || !base64Data) {
+//         return res.status(400).json({ success: false, error: 'Filename and base64Data are required' });
+//       }
+
+//       const matches = base64Data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+//       let buffer: Buffer;
+//       let fileExt = '';
+
+//       if (matches && matches.length === 3) {
+//         fileExt = matches[1].split('/')[1];
+//         buffer = Buffer.from(matches[2], 'base64');
+//       } else {
+//         buffer = Buffer.from(base64Data, 'base64');
+//         fileExt = path.extname(filename).replace('.', '') || 'jpg';
+//       }
+
+//       // const cleanName = path.basename(filename).replace(/[^a-zA-Z0-9.\-_]/g, '');
+//       // const uniqueName = `${path.parse(cleanName).name}_${Date.now()}.${fileExt}`;
+//       // const savePath = path.join(__dirname, '../uploads', uniqueName);
+
+//       // fs.writeFileSync(savePath, buffer);
+
+//       const cleanName = path.basename(filename).replace(/[^a-zA-Z0-9.\-_]/g, '');
+//       const uniqueName = `${path.parse(cleanName).name}_${Date.now()}.${fileExt}`;
+//       const uploadsDir = path.join(__dirname, '../../uploads');
+//       if (!fs.existsSync(uploadsDir)) {
+//         fs.mkdirSync(uploadsDir, { recursive: true });
+//       }
+//       const savePath = path.join(uploadsDir, uniqueName);
+
+//       fs.writeFileSync(savePath, buffer);
+
+//       const host = req.get('host') || 'localhost:5000';
+//       const fileUrl = `${req.protocol}://${host}/uploads/${uniqueName}`;
+
+//       res.status(200).json({
+//         success: true,
+//         data: {
+//           url: fileUrl
+//         }
+//       });
+//     } catch (err: any) {
+//       res.status(500).json({ success: false, error: err.message });
+//     }
+//   }
+// }
+
+// export const uploadController = new UploadController();
+
+
 // ==========================================
 // 14. UPLOAD CONTROLLER
 // ==========================================
 import fs from 'fs';
 import path from 'path';
+import { uploadService } from '../services/upload.service';
 
 export class UploadController {
   async uploadImage(req: AuthRequest, res: Response) {
@@ -919,30 +980,18 @@ export class UploadController {
         fileExt = path.extname(filename).replace('.', '') || 'jpg';
       }
 
-      // const cleanName = path.basename(filename).replace(/[^a-zA-Z0-9.\-_]/g, '');
-      // const uniqueName = `${path.parse(cleanName).name}_${Date.now()}.${fileExt}`;
-      // const savePath = path.join(__dirname, '../uploads', uniqueName);
-
-      // fs.writeFileSync(savePath, buffer);
-
       const cleanName = path.basename(filename).replace(/[^a-zA-Z0-9.\-_]/g, '');
       const uniqueName = `${path.parse(cleanName).name}_${Date.now()}.${fileExt}`;
-      const uploadsDir = path.join(__dirname, '../../uploads');
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
-      }
-      const savePath = path.join(uploadsDir, uniqueName);
 
-      fs.writeFileSync(savePath, buffer);
-
-      const host = req.get('host') || 'localhost:5000';
-      const fileUrl = `${req.protocol}://${host}/uploads/${uniqueName}`;
+      // Uploads go through Cloudinary (see services/upload.service.ts) instead of
+      // local disk, because Vercel's serverless functions have a read-only,
+      // non-persistent filesystem -- anything written to disk here would
+      // vanish (or fail to write at all) between requests.
+      const fileUrl = await uploadService.uploadImage(buffer, uniqueName);
 
       res.status(200).json({
         success: true,
-        data: {
-          url: fileUrl
-        }
+        data: { url: fileUrl }
       });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });

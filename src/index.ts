@@ -79,10 +79,19 @@ app.use('/api', router);
 // Global Error Handler Middleware
 app.use(errorHandler);
 
-// Start Server
-const server = app.listen(env.PORT, () => {
-  console.log(`Velora Backend running in ${env.NODE_ENV} mode on port ${env.PORT}`);
-});
+// // Start Server
+// const server = app.listen(env.PORT, () => {
+//   console.log(`Velora Backend running in ${env.NODE_ENV} mode on port ${env.PORT}`);
+// });
+
+// Start Server (skipped on Vercel -- its serverless runtime imports
+// the exported `app` directly and handles the HTTP listening itself)
+let server: import('http').Server | undefined;
+if (!process.env.VERCEL) {
+  server = app.listen(env.PORT, () => {
+    console.log(`Velora Backend running in ${env.NODE_ENV} mode on port ${env.PORT}`);
+  });
+}
 
 export { app, server };
 export default app;
