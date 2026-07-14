@@ -67,12 +67,12 @@ const allowedOrigins = [
   'http://127.0.0.1:5173',
 ];
 
-// Vercel gives every deployment a unique subdomain (e.g.
-// velora-frontend-<random>-juhii07s-projects.vercel.app), which changes
-// on every deploy -- so an exact string match in allowedOrigins would
-// break again on the next deploy. This regex allows any deployment
-// belonging to this Vercel account/project instead of one fixed URL.
-const vercelProjectPattern = /^https:\/\/velora-frontend(-[a-z0-9]+)?-juhii07s-projects\.vercel\.app$/;
+// Vercel gives a frontend project multiple valid URLs: a short production
+// alias (e.g. velora-frontend-chi.vercel.app) and a long per-deployment
+// hash URL (e.g. velora-frontend-670nvza22-juhii07s-projects.vercel.app)
+// that changes on every deploy. This pattern matches any *.vercel.app
+// subdomain starting with "velora-frontend", covering both shapes.
+const vercelProjectPattern = /^https:\/\/velora-frontend[a-z0-9-]*\.vercel\.app$/;
 
 app.use(cors({
   origin: (origin, callback) => {
