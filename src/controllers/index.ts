@@ -1045,11 +1045,13 @@ export class UploadController {
         success: true,
         data: { url: fileUrl }
       });
-    } catch (err: any) {
+   } catch (err: any) {
+      console.error('Upload failed:', err);
       res.status(500).json({ success: false, error: err.message });
     }
   }
 
+  // Serves a previously-uploaded image's raw bytes back out with the
   // Serves a previously-uploaded image's raw bytes back out with the
   // correct Content-Type, so it can be used directly as an <img src>.
   async getImage(req: Request, res: Response) {
