@@ -130,5 +130,6 @@ router.put('/admin/contacts/:id/status', protect, isAdmin, contactController.upd
 router.get('/admin/notifications', protect, isAdmin, notificationController.getNotifications);
 router.put('/admin/notifications/:id/read', protect, isAdmin, notificationController.markAsRead);
 router.post('/admin/upload', protect, isAdmin, uploadController.uploadImage);
+router.get('/images/:id', uploadController.getImage);
 
 export default router;
