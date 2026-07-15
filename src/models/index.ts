@@ -14,3 +14,4 @@ export { NewsletterSubscriber, INewsletterSubscriber } from './newsletter.model'
 export { WebsiteSettings, IWebsiteSettings, IFeatureToggles, ISocialLinks, IBrandStory } from './settings.model';
 export { Notification, INotification } from './notification.model';
 export { ActivityLog, IActivityLog } from './activity.model';
+export { Image, IImage } from './image.model';

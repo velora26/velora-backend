@@ -1,4 +1,4 @@
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { AuthRequest } from '../middlewares/auth.middleware';
 import { authService } from '../services/auth.service';
 import { productService } from '../services/product.service';
@@ -34,6 +34,32 @@ const logActivity = async (userId: string | undefined, action: string, details: 
   }
 };
 
+// Cookie options for the refresh token cookie.
+//
+// This was previously `sameSite: 'strict'`, which made Chrome/browsers
+// silently refuse to send the cookie on ANY cross-site request. Since the
+// frontend (velora-frontend-*.vercel.app) and backend
+// (velora-backend-peach.vercel.app) are different origins, every request
+// from the frontend counts as cross-site -- so the refresh cookie was set
+// on login but never actually sent back on later requests. That's what
+// caused /api/auth/refresh (and eventually /api/auth/profile, once the
+// short-lived access token expired) to fail with 401 even for a user who
+// had genuinely just logged in.
+//
+// SameSite=None is required to allow a cookie to be sent cross-site at
+// all, and browsers require Secure to be true whenever SameSite=None is
+// used (a cookie combining None + non-Secure is rejected outright). We
+// force `secure: true` on Vercel/production rather than trusting NODE_ENV
+// alone, since NODE_ENV isn't always guaranteed to be 'production' for a
+// custom Node backend deployed via @vercel/node.
+const isSecureEnv = process.env.NODE_ENV === 'production' || !!process.env.VERCEL;
+const REFRESH_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: isSecureEnv,
+  sameSite: (isSecureEnv ? 'none' : 'lax') as 'none' | 'lax',
+  maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+};
+
 // ==========================================
 // 1. AUTH CONTROLLER
 // ==========================================
@@ -42,12 +68,7 @@ export class AuthController {
     try {
       const { user, accessToken, refreshToken } = await authService.register(req.body);
       
-      res.cookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-      });
+      res.cookie('refreshToken', refreshToken, REFRESH_COOKIE_OPTIONS);
 
       await logActivity(user._id.toString(), 'User Registration', `Registered email: ${user.email}`);
 
@@ -67,12 +88,7 @@ export class AuthController {
     try {
       const { user, accessToken, refreshToken } = await authService.login(req.body);
 
-      res.cookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000
-      });
+      res.cookie('refreshToken', refreshToken, REFRESH_COOKIE_OPTIONS);
 
       await logActivity(user._id.toString(), 'User Login', `Logged in via email: ${user.email}`);
 
@@ -107,7 +123,14 @@ export class AuthController {
         await authService.logout(req.user.id);
         await logActivity(req.user.id, 'User Logout', `Logged out`);
       }
-      res.clearCookie('refreshToken');
+      // clearCookie must be called with the same attributes (sameSite,
+      // secure, path) used when the cookie was set, or the browser may
+      // not recognize it as the same cookie and fail to actually clear it.
+      res.clearCookie('refreshToken', {
+        httpOnly: REFRESH_COOKIE_OPTIONS.httpOnly,
+        secure: REFRESH_COOKIE_OPTIONS.secure,
+        sameSite: REFRESH_COOKIE_OPTIONS.sameSite
+      });
       res.status(200).json({ success: true, data: { message: 'Logged out successfully' } });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
@@ -956,9 +979,18 @@ export const notificationController = new NotificationController();
 // ==========================================
 // 14. UPLOAD CONTROLLER
 // ==========================================
-import fs from 'fs';
 import path from 'path';
 import { uploadService } from '../services/upload.service';
+import { Image } from '../models/image.model';
+
+const EXT_TO_MIME: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  svg: 'image/svg+xml'
+};
 
 export class UploadController {
   async uploadImage(req: AuthRequest, res: Response) {
@@ -971,28 +1003,66 @@ export class UploadController {
       const matches = base64Data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
       let buffer: Buffer;
       let fileExt = '';
+      let contentType = '';
 
       if (matches && matches.length === 3) {
+        contentType = matches[1];
         fileExt = matches[1].split('/')[1];
         buffer = Buffer.from(matches[2], 'base64');
       } else {
         buffer = Buffer.from(base64Data, 'base64');
         fileExt = path.extname(filename).replace('.', '') || 'jpg';
+        contentType = EXT_TO_MIME[fileExt.toLowerCase()] || 'application/octet-stream';
       }
 
       const cleanName = path.basename(filename).replace(/[^a-zA-Z0-9.\-_]/g, '');
       const uniqueName = `${path.parse(cleanName).name}_${Date.now()}.${fileExt}`;
 
-      // Uploads go through Cloudinary (see services/upload.service.ts) instead of
-      // local disk, because Vercel's serverless functions have a read-only,
-      // non-persistent filesystem -- anything written to disk here would
-      // vanish (or fail to write at all) between requests.
-      const fileUrl = await uploadService.uploadImage(buffer, uniqueName);
+      // MongoDB caps a single document at 16MB. Stay well under that (this
+      // checks the raw decoded bytes, before Mongo's own BSON overhead) so
+      // the failure is a clear message instead of a cryptic driver error.
+      const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
+      if (buffer.length > MAX_IMAGE_BYTES) {
+        return res.status(413).json({
+          success: false,
+          error: `Image is too large (${(buffer.length / 1024 / 1024).toFixed(1)}MB). Please use an image under 10MB.`
+        });
+      }
+
+      // Images are stored directly in MongoDB (see services/upload.service.ts)
+      // instead of local disk or a third-party storage service, because
+      // Vercel's serverless functions have a read-only, non-persistent
+      // filesystem -- anything written to disk here would vanish (or fail
+      // to write at all) between requests.
+      const imageId = await uploadService.uploadImage(buffer, uniqueName, contentType);
+
+      // Build an absolute URL, since the frontend and backend are separate
+      // deployments on different domains -- a relative path would resolve
+      // against the wrong origin when used in an <img src>.
+      const fileUrl = `${req.protocol}://${req.get('host')}/api/images/${imageId}`;
 
       res.status(200).json({
         success: true,
         data: { url: fileUrl }
       });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  // Serves a previously-uploaded image's raw bytes back out with the
+  // correct Content-Type, so it can be used directly as an <img src>.
+  async getImage(req: Request, res: Response) {
+    try {
+      const image = await Image.findById(req.params.id);
+      if (!image) {
+        return res.status(404).json({ success: false, error: 'Image not found' });
+      }
+      res.set('Content-Type', image.contentType);
+      // Images don't change once uploaded (a re-upload creates a new id),
+      // so it's safe to let browsers/CDNs cache these aggressively.
+      res.set('Cache-Control', 'public, max-age=31536000, immutable');
+      res.send(image.data);
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }
