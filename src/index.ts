@@ -220,11 +220,18 @@ const allowedOrigins = [
 // hash URL (e.g. velora-frontend-670nvza22-juhii07s-projects.vercel.app)
 // that changes on every deploy. This pattern matches any *.vercel.app
 // subdomain starting with "velora-frontend", covering both shapes.
-const vercelProjectPattern = /^https:\/\/velora-frontend[a-z0-9-]*\.vercel\.app$/;
+
+const allowedOrigins = [
+  env.CLIENT_URL,
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'https://velora-jewellery.vercel.app',
+  'https://velora-hlp031ynl-velora1526-5405s-projects.vercel.app',
+];
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin) || vercelProjectPattern.test(origin)) {
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
