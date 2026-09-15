@@ -209,11 +209,6 @@ app.use(helmet({
 // }));
 
 // CORS Configuration
-const allowedOrigins = [
-  env.CLIENT_URL,
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-];
 
 // Vercel gives a frontend project multiple valid URLs: a short production
 // alias (e.g. velora-frontend-chi.vercel.app) and a long per-deployment
